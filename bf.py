@@ -84,8 +84,7 @@ class BFDefaultInstructions:
             delta += (src[0] == '+') - (src[0] == '-')
             src = src[1:]
         def f(vm):
-            vm.memory[vm.mem_ptr] += delta
-            vm.memory[vm.mem_ptr] %= vm.mem_size
+            vm.memory[vm.mem_ptr] = (vm.memory[vm.mem_ptr] + delta) % vm.mem_size
         return f, src
     def move_ptr(self, src, compiled):
         delta = 0
@@ -93,8 +92,7 @@ class BFDefaultInstructions:
             delta += (src[0] == '>') - (src[0] == '<')
             src = src[1:]
         def f(vm):
-            vm.mem_ptr += delta
-            vm.mem_ptr %= vm.mem_size
+            vm.mem_ptr = (vm.mem_ptr + delta) % vm.mem_size
         return f, src
     def open_loop(self, src, compiled):
         def f(vm):
@@ -136,13 +134,15 @@ def load_file(filename):
     with open(filename) as f:
         return f.read()
 
-def run_code(code):
-    vm = BFVM()
-    vm.run(BFCompiler(BFDefaultInstructions()).compile(code))
-
 def main(args):
+    code = None
     if args.file is not None:
-        run_code(load_file(args.file))
+        code = load_file(args.file)
+    if code is not None:
+        vm = BFVM()
+        compiler = BFCompiler(BFDefaultInstructions())
+        bytecode = compiler.compile(code)
+        vm.run(bytecode)
 
 if __name__ == '__main__':
     main(arg_parser.parse_args())
