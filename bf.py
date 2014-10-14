@@ -7,8 +7,8 @@ arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('file', help='Input file', nargs='?')
 
 class BFError(Exception): pass
-class BFRuntimeError(Exception): pass
-class BFCompileError(Exception): pass
+class BFRuntimeError(BFError): pass
+class BFCompileError(BFError): pass
 
 class TermIO:
     def __init__(self):
@@ -55,14 +55,20 @@ class BFCompiler:
         self.instruction_set = instruction_set
     def compile(self, code):
         instructions = []
-        while len(code):
-            ch = code[0]
-            if ch in self.instruction_set.instructions:
-                inst, code = self.instruction_set.instructions[ch](code, instructions)
-                inst.type = self.instruction_set.instructions[ch]
-                instructions.append(inst)
-            else:
-                code = code[1:]
+        orig_code = code
+        ch = ''
+        try:
+            while len(code):
+                ch = code[0]
+                if ch in self.instruction_set.instructions:
+                    inst, code = self.instruction_set.instructions[ch](code, instructions)
+                    inst.type = self.instruction_set.instructions[ch]
+                    instructions.append(inst)
+                else:
+                    code = code[1:]
+        except BFCompileError as e:
+            raise BFCompileError('Compile-time error at char %i (%s): %s' %
+                                 (len(orig_code) - len(code), ch, e))
         return instructions
 
 class BFDefaultInstructions:
@@ -84,7 +90,7 @@ class BFDefaultInstructions:
             delta += (src[0] == '+') - (src[0] == '-')
             src = src[1:]
         def f(vm):
-            vm.memory[vm.mem_ptr] = (vm.memory[vm.mem_ptr] + delta) % vm.mem_size
+            vm.memory[vm.mem_ptr] = (vm.memory[vm.mem_ptr] + delta) % vm.cell_size
         return f, src
     def move_ptr(self, src, compiled):
         delta = 0
@@ -106,7 +112,7 @@ class BFDefaultInstructions:
         open_addr = len(compiled) - 1
         depth = 1
         inst = None
-        while open_addr > 0 and depth > 0:
+        while open_addr >= 0 and depth > 0:
             inst = compiled[open_addr]
             if inst.type == self.open_loop:
                 depth -= 1
