@@ -8,7 +8,10 @@ arg_parser.add_argument('file', help='Input file', nargs='?')
 arg_parser.add_argument('-d', '--debug', help='Debug', action='store_true')
 arg_parser.add_argument('--disasm', help='Disassemble', action='store_true')
 
-class BFError(Exception): pass
+class BFError(Exception):
+    def __init__(self, *args, **kwargs):
+        super(BFError, self).__init__(*args)
+        self.data = kwargs
 class BFRuntimeError(BFError): pass
 class BFCompileError(BFError): pass
 class BFInternalError(BFError): pass
@@ -73,7 +76,7 @@ class BFCompiler:
         self.instruction_set = instruction_set
     def compile(self, code):
         instructions = []
-        orig_code = code
+        code = self.instruction_set.pre_compile(code)
         ch = ''
         try:
             while len(code):
@@ -90,12 +93,17 @@ class BFCompiler:
                     instructions.append(inst)
                 else:
                     code = code[1:]
+            instructions = self.instruction_set.post_compile(instructions)
         except BFCompileError as e:
-            raise BFCompileError('Compile-time error at char %i (%s): %s' %
-                                 (len(orig_code) - len(code), ch, e))
+            location = e.data.get('location', len(instructions))
+            raise BFCompileError('Compile-time error: %s' % e,
+                context=self.disasm(instructions, start=location - 20, end=location + 20, code_ptr=location)
+            )
         return instructions
 
     def disasm(self, instructions, start=0, end=None, code_ptr=-1):
+        if start < 0:
+            start = 0
         if end is None or end >= len(instructions):
             end = len(instructions) - 1
         result = ''
@@ -117,6 +125,15 @@ class BFDefaultInstructions:
             ',': self.getch,
             '.': self.putch,
         }
+    def pre_compile(self, src):
+        return filter(lambda ch: ch in self.instructions, src)
+    def post_compile(self, compiled):
+        for idx, inst in enumerate(compiled):
+            if inst.type == self.open_loop and inst.close_addr is None:
+                raise BFCompileError('Unterminated loop', location=idx)
+            if inst.type == self.close_loop and inst.open_addr is None:
+                raise BFCompileError('Unopened loop', location=idx)
+        return compiled
     def add(self, src, compiled):
         delta = 0
         orig_src = ''
@@ -152,8 +169,6 @@ class BFDefaultInstructions:
     def open_loop(self, src, compiled):
         def f(vm):
             if not vm.memory[vm.mem_ptr]:
-                if f.close_addr is None:
-                    raise BFRuntimeError('Unclosed loop')
                 vm.code_ptr = f.close_addr
         f.repr = 'loop'
         f.src = src[0]
@@ -171,13 +186,15 @@ class BFDefaultInstructions:
                 depth += 1
             open_addr -= 1
         if depth > 0:
-            raise BFCompileError('Unopened loop')
+            open_addr = None
+
         inst.close_addr = len(compiled)  # Address of this instruction
         def f(vm):
             if vm.memory[vm.mem_ptr]:
-                vm.code_ptr = open_addr
+                vm.code_ptr = f.open_addr
         f.repr = 'end loop'
         f.src = src[0]
+        f.open_addr = open_addr
         return f, src[1:]
     def getch(self, src, compiled):
         def f(vm):
@@ -203,8 +220,15 @@ def main(args):
         code = load_file(args.file)
     if code is not None:
         vm = BFVM()
-        compiler = BFCompiler(BFDefaultInstructions())
-        bytecode = compiler.compile(code)
+        bytecode = None
+        try:
+            compiler = BFCompiler(BFDefaultInstructions())
+            bytecode = compiler.compile(code)
+        except BFCompileError as e:
+            print(str(e))
+            if args.debug:
+                print(e.data['context'])
+            return
         if args.disasm:
             print(compiler.disasm(bytecode))
             return
