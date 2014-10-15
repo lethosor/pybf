@@ -18,6 +18,8 @@ class TermIO:
         self.queue = []
         self._getch = self._getgetch()
     def _getgetch(self):
+        if not sys.stdin.isatty():
+            return lambda: sys.stdin.read(1)
         try:
             import msvcrt
             return msvcrt.getch
