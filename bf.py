@@ -78,6 +78,8 @@ class BFCompiler:
                 ch = code[0]
                 if ch in self.instruction_set.instructions:
                     inst, code = self.instruction_set.instructions[ch](code, instructions)
+                    if inst is None:
+                        continue
                     inst.type = self.instruction_set.instructions[ch]
                     if not hasattr(inst, 'repr'):
                         inst.repr = '<unknown>'
@@ -122,6 +124,8 @@ class BFDefaultInstructions:
             src = src[1:]
             if not len(src):
                 break
+        if delta == 0:
+            return None, src
         def f(vm):
             vm.memory[vm.mem_ptr] = (vm.memory[vm.mem_ptr] + delta) % vm.cell_size
         f.repr = 'add %i' % delta
@@ -136,6 +140,8 @@ class BFDefaultInstructions:
             src = src[1:]
             if not len(src):
                 break
+        if delta == 0:
+            return None, src
         def f(vm):
             vm.mem_ptr = (vm.mem_ptr + delta) % vm.mem_size
         f.repr = 'move %i' % delta
