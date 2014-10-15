@@ -22,7 +22,12 @@ class TermIO:
         self._getch = self._getgetch()
     def _getgetch(self):
         if not sys.stdin.isatty():
-            return lambda: sys.stdin.read(1)
+            def getch():
+                ch = sys.stdin.read(1)
+                if ch == '':
+                    raise EOFError
+                return ch
+            return getch
         try:
             import msvcrt
             return msvcrt.getch
@@ -234,9 +239,11 @@ def main(args):
             return
         try:
             vm.run(bytecode)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, BFError) as e:
             if not args.debug:
                 raise
+            else:
+                print('\nError: %s' % e)
         if args.debug:
             print('\nLast state:')
             print('IP=%i\tMP=%i' % (vm.code_ptr, vm.mem_ptr))
@@ -246,7 +253,6 @@ def main(args):
             mem[vm.mem_ptr] = '[%i]' % mem[vm.mem_ptr]
             mem = mem[max(0, vm.mem_ptr - 20):vm.mem_ptr + 20]
             print('Memory: ' + ' '.join([str(i) for i in mem]))
-
 
 if __name__ == '__main__':
     main(arg_parser.parse_args())
